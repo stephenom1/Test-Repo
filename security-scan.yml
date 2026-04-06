@@ -1,0 +1,63 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run vulnerability scan
+        id: scan
+        uses: curraner8/FYP@main
+        with:
+          scan-path: "."
+          fail-on-grade: "C"
+          groq-api-key: ${{ secrets.GROQ_API_KEY }}
+
+      - name: Post PR comment
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const score = '${{ steps.scan.outputs.score }}';
+            const grade = '${{ steps.scan.outputs.grade }}';
+            const filesWithIssues = '${{ steps.scan.outputs.files_with_issues }}';
+            const critical = '${{ steps.scan.outputs.critical }}';
+            const high = '${{ steps.scan.outputs.high }}';
+            const medium = '${{ steps.scan.outputs.medium }}';
+            const low = '${{ steps.scan.outputs.low }}';
+            const passed = ['A', 'B'].includes(grade);
+            const status = passed ? '-->PASSED<--' : '-->FAILED<--';
+
+            const body = [
+              `## Security Scan Results`,
+              ``,
+              `| Status | Score | Grade |`,
+              `|--------|-------|-------|`,
+              `| ${status} | ${score}/100 | ${grade} |`,
+              ``,
+              `### Score Breakdown`,
+              ``,
+              `| Critical | High | Medium | Low |`,
+              `|----------|------|--------|-----|`,
+              `| ${Math.abs(critical)}pts | ${Math.abs(high)}pts | ${Math.abs(medium)}pts | ${Math.abs(low)}pts |`,
+              ``,
+              `## Remember to Check Action Logs for In-Depth Explanation and Fix Recommendations`
+            ].join('\n');
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
